@@ -34,8 +34,8 @@ class TabloWindow(QWidget):
         self.setGeometry(100, 100, 800, 600)
         self.setStyleSheet("background-color: black;")  # Чёрный фон
         #состояние таймаутов
-        self.home_timeout_state = [False, False, False]  # False - зеленый, True - красный
-        self.guest_timeout_state = [False, False, False]
+        self.home_timeout_status = [False, False, False]  # Статус тайм-аутов для домашней команды
+        self.guest_timeout_status = [False, False, False]
         self.home_timeout_circles = [QLabel("●") for _ in range(3)]  # Кружки для домашней команды
         self.guest_timeout_circles = [QLabel("●") for _ in range(3)]
 
@@ -51,6 +51,8 @@ class TabloWindow(QWidget):
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0] if font_id != -1 else 'Arial'
         self.digit_font = QFont(font_family, 72, QFont.Bold)
         self.text_font = QFont("Arial", 32, QFont.Bold)
+
+        self.is_fullscreen = False
 
         # Основной слой компоновки
         main_layout = QVBoxLayout()
@@ -239,34 +241,55 @@ class TabloWindow(QWidget):
         self.guest_foul_label.setText(str(guest_foul_count))
         self.timer_label.setText(timer)
 
-        if home_timeout_state is not None:
-            for i, state in enumerate(home_timeout_state):
-                if state:
-                    self.home_timeout_circles[i].setStyleSheet("color: red;")  # Тайм-аут красный
-                else:
-                    self.home_timeout_circles[i].setStyleSheet("color: green;")  # Тайм-аут зеленый
-
-        if guest_timeout_state is not None:
-            for i, state in enumerate(guest_timeout_state):
-                if state:
-                    self.guest_timeout_circles[i].setStyleSheet("color: red;")  # Тайм-аут красный
-                else:
-                    self.guest_timeout_circles[i].setStyleSheet("color: green;")  # Тайм-аут зеленый
+        for i in range(3):
+            self.update_timeout_display("home", i)
+            self.update_timeout_display("guest", i)
         self.timer_label.setText(timer)
-    def toggle_timeout(self, team, index):
-        print(f"Toggle timeout for {team} team, index {index}")
-        if team == 'home':
-            self.home_timeout_state[index] = not self.home_timeout_state[index]
-            self.home_timeout_circles[index].setStyleSheet(
-                f"color: {'red' if self.home_timeout_state[index] else 'green'};"
-            )
-        elif team == 'guest':
-            self.guest_timeout_state[index] = not self.guest_timeout_state[index]
-            self.guest_timeout_circles[index].setStyleSheet(
-                f"color: {'red' if self.guest_timeout_state[index] else 'green'};"
-            )
-        self.update()
 
+    def toggle_timeout(self, team, timeout_index):
+        """Переключение состояния тайм-аута для команды на определенной позиции."""
+        if team == "home":
+            self.home_timeout_status[timeout_index] = not self.home_timeout_status[timeout_index]
+            self.update_timeout_display("home", timeout_index)
+        elif team == "guest":
+            self.guest_timeout_status[timeout_index] = not self.guest_timeout_status[timeout_index]
+            self.update_timeout_display("guest", timeout_index)
+
+    def update_timeout_display(self, team, timeout_index):
+        """Обновление цвета кружков на основе текущего состояния тайм-аута."""
+        if team == "home":
+            if self.home_timeout_status[timeout_index]:
+                # Установить красный цвет для активного тайм-аута
+                self.home_timeout_circles[timeout_index].setStyleSheet("color: red;")
+            else:
+                # Вернуть зеленый цвет для неактивного тайм-аута
+                self.home_timeout_circles[timeout_index].setStyleSheet("color: green;")
+        elif team == "guest":
+            if self.guest_timeout_status[timeout_index]:
+                self.guest_timeout_circles[timeout_index].setStyleSheet("color: red;")
+            else:
+                self.guest_timeout_circles[timeout_index].setStyleSheet("color: green;")
+
+    def toggle_fullscreen(self):
+        if self.is_fullscreen:
+            # Если уже в полноэкранном режиме, переключаем в режим 800x600
+            self.showNormal()
+            self.setGeometry(100, 100, 800, 600)  # Позиция и размер 800x600
+            self.setWindowFlags(Qt.Window)  # Сбрасываем флаг на обычный режим
+            self.is_fullscreen = False
+        else:
+            # Если не в полноэкранном режиме, переключаем в полноэкранный
+            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            self.showFullScreen()
+            self.is_fullscreen = True
+        self.show()
+
+    def keyPressEvent(self, event):
+        # Отслеживаем нажатие клавиши ESC
+        if event.key() == Qt.Key_Escape:
+            self.toggle_fullscreen()
+        else:
+            super().keyPressEvent(event)
 
 class MainWindow(QMainWindow):
 
@@ -1048,21 +1071,12 @@ class MainWindow(QMainWindow):
 
         # Если окно еще не полноэкранное, то переводим его в полноэкранный режим
         if not self.tablo_window.isFullScreen():
-            # Получаем текущую геометрию окна
-            window_geometry = self.tablo_window.geometry()
-
-            # Получаем номер экрана, на котором находится окно
-            screen_number = QDesktopWidget().screenNumber(self.tablo_window)
-
-            # Получаем геометрию экрана, на котором находится окно
-            screen_geometry = QDesktopWidget().screenGeometry(screen_number)
-
-            # Устанавливаем позицию и размер окна на экране в полноэкранном режиме
-            self.tablo_window.setGeometry(screen_geometry)  # Позиция и размер экрана
-            self.tablo_window.setWindowFlags(Qt.FramelessWindowHint)  # Убираем рамки окна
+            # Устанавливаем флаги для полного экрана и удержания окна поверх других
+            self.tablo_window.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
             self.tablo_window.showFullScreen()  # Переводим в полноэкранный режим
         else:
             # Если окно уже полноэкранное, возвращаем его в нормальный режим
+            self.tablo_window.setWindowFlags(Qt.Window)
             self.tablo_window.showNormal()
 
 
