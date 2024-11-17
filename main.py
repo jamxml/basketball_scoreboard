@@ -306,11 +306,6 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         main_layout = QVBoxLayout()
 
-
-
-
-
-
         # ---- Названия команд ----
         team_names_layout = QHBoxLayout()
 
@@ -475,8 +470,10 @@ class MainWindow(QMainWindow):
 
         # Кнопки управления таймером
         self.start_button = QPushButton("Старт")
-        self.stop_button = QPushButton("Стоп")
+        self.add_time_button = QPushButton("Добавить")
+        self.stop_button = QPushButton("Стоп/возобновить")
         self.reset_button = QPushButton("Сброс")
+        self.add_time_button = QPushButton("Добавить")
 
 
         # Ограничим размер кнопок
@@ -495,6 +492,7 @@ class MainWindow(QMainWindow):
         timer_layout.addLayout(time_layout)  # Добавляем горизонтальный layout с кнопками
         timer_layout.addWidget(self.timer_label)  # Таймер
         timer_layout.addWidget(self.start_button)
+        timer_layout.addWidget(self.add_time_button)
         timer_layout.addWidget(self.stop_button)
         timer_layout.addWidget(self.reset_button)
 
@@ -608,6 +606,7 @@ class MainWindow(QMainWindow):
 
         self.seconds = 0
         self.minutes = 0
+        self.paused_time = None
 
         # Сигнал для звука
         if hasattr(sys, '_MEIPASS'):
@@ -627,10 +626,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(main_widget)
 
 
-
         # Подключаем кнопки к обработчикам
         self.start_button.clicked.connect(self.set_time_from_input)
         self.start_button.clicked.connect(self.start_timer)
+        self.add_time_button.clicked.connect(self.add_time)
         self.stop_button.clicked.connect(self.stop_timer)
         self.reset_button.clicked.connect(self.reset_timer)
 
@@ -852,13 +851,52 @@ class MainWindow(QMainWindow):
             self.update_thumbnail()
 
     def start_timer(self):
-        """Запускает таймер, если он не на нуле."""
-        if self.minutes > 0 or self.seconds > 0:
-            self.timer.start(1000)  # Таймер обновляется каждую секунду
+        self.start_button.setEnabled(self.minutes == 0 and self.seconds == 0)
+        self.timer.start(1000)
+
+    def add_time(self):
+        """Добавляет время из QLineEdit к текущему времени таймера."""
+        time_input = self.time_input.text()
+        print(f"Input time to add: {time_input}")
+
+        match = re.match(r"^([0-9]{2}):([0-9]{2})$", time_input)
+        if match:
+            # Время из QLineEdit
+            add_minutes = int(match.group(1))
+            add_seconds = int(match.group(2))
+            print(f"Time to add: {add_minutes:02}:{add_seconds:02}")
+
+            # Рассчитываем новое время
+            total_seconds = self.minutes * 60 + self.seconds + add_minutes * 60 + add_seconds
+
+            # Конвертируем обратно в минуты и секунды
+            self.minutes = total_seconds // 60
+            self.seconds = total_seconds % 60
+
+            # Обновляем отображение
+            self.timer_label.setText(f"{self.minutes:02}:{self.seconds:02}")
+            print(f"New timer: {self.minutes:02}:{self.seconds:02}")
+
+            self.update_scoreboard()
+            self.update_thumbnail()
+        else:
+            print("Invalid time format! Use MM:SS.")
+            self.time_input.setText("введите мм:cc")
 
     def stop_timer(self):
         """Останавливает таймер."""
-        self.timer.stop()
+        if self.timer.isActive():
+            # Таймер работает, останавливаем его
+            self.timer.stop()
+            self.is_paused = True
+            print(f"Timer paused at {self.minutes:02}:{self.seconds:02}")
+        else:
+            # Таймер на паузе, продолжаем отсчет
+            if self.minutes > 0 or self.seconds > 0:
+                self.timer.start(1000)
+                self.is_paused = False
+                print(f"Timer resumed at {self.minutes:02}:{self.seconds:02}")
+        self.start_button.setEnabled(self.minutes == 0 and self.seconds == 0)
         self.update_scoreboard()
         self.update_thumbnail()
 
@@ -868,6 +906,8 @@ class MainWindow(QMainWindow):
         self.minutes = 0
         self.seconds = 0
         self.timer_label.setText("00:00")
+        self.start_button.setEnabled(self.minutes == 0 or self.seconds == 0)
+
         self.update_scoreboard()
         self.update_thumbnail()
 
@@ -879,6 +919,7 @@ class MainWindow(QMainWindow):
             print("Timer finished!")
             self.update_scoreboard()
             self.update_thumbnail()
+            self.start_button.setEnabled(self.minutes == 0 and self.seconds == 0)
             return
 
         self.seconds -= 1
